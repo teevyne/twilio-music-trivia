@@ -6,4 +6,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface RealTimeDataRepository extends JpaRepository<RealTimeData, Long> {
+
+    RealTimeData findByGameId(Long gameId);
+
 }

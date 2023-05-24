@@ -1,105 +1,136 @@
 package com.twilio.trivia.service;
 
-import com.twilio.Twilio;
-import com.twilio.rest.api.v2010.account.Message;
 import com.twilio.trivia.model.*;
-import com.twilio.type.PhoneNumber;
+import com.twilio.trivia.repository.GameRepository;
+import com.twilio.trivia.repository.QuestionRepository;
+import com.twilio.trivia.repository.RealTimeDataRepository;
+import com.twilio.trivia.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.Map;
 
 @Service
 public class TriviaGameService {
 
     @Autowired
-    private UserService userService;
+    private UserRepository userRepository;
 
     @Autowired
-    private QuestionService questionService;
+    private QuestionRepository questionRepository;
 
     @Autowired
-    private GameService gameService;
+    private GameRepository gameRepository;
 
     @Autowired
-    private ScoreService scoreService;
+    private RealTimeDataRepository realTimeDataRepository;
 
     @Autowired
-    private RealTimeDataService realTimeDataService;
+    private TwilioConfigService twilioConfigService;
 
-    @Autowired
-    private TwilioConfig twilioConfig;
-
-    @Value("${twilio.from.number}")
-    private String twilioFromNumber;
-
-    @Value("${twilio.account.sid}")
-    private String twilioAccountSid;
-
-    @Value("${twilio.auth.token}")
-    private String twilioAuthToken;
+    public User createUser(User user) {
+        return userRepository.save(user);
+    }
 
     public Game startGame() {
         Game game = new Game();
         game.setStartTime(LocalDateTime.now());
-        game = gameService.saveGame(game);
+        game = gameRepository.save(game);
+
+        RealTimeData realTimeData = new RealTimeData();
+        realTimeData.setGameId(game.getId());
+        realTimeDataRepository.save(realTimeData);
+
         return game;
     }
 
-    public void sendQuestion(Game game, Question question) {
+    public String addUserToGame(Long userId, Long gameId) {
 
-        List<String> answers = Arrays.asList(question.getOption1(), question.getOption2(), question.getOption3(), question.getOption4());
-        Collections.shuffle(answers);
+        RealTimeData realTimeData = realTimeDataRepository.findByGameId(gameId);
+        realTimeData.getPlayerIds().add(userId);
+        realTimeData.getScores().put(userId, 0);
 
-        List<User> usersList= userService.getAllUsers();
-
-        StringBuilder sb = new StringBuilder();
-        sb.append(question.getQuestionText()).append("\n");
-        for (int i = 0; i < answers.size(); i++) {
-            sb.append(i+1).append(". ").append(answers.get(i)).append("\n");
-        }
-
-        for (User user : usersList) {
-            sendMessage(user.getPhoneNumber(), sb.toString());
-        }
+        return "User has been successfully added";
     }
 
-    public void submitAnswer(User user, Question question, String answer) {
-        Score score = new Score();
-        score.setUser(user);
-        score.setGame(question.getGame());
-        score.setScore(0);
-        if (answer.equals(question.getCorrectAnswer())) {
-            score.setScore(1);
+    public Question createQuestion(CreateQuestionRequest createQuestionRequest) { // major modification here.
+
+        Question question = new Question();
+        question.setQuestionText(createQuestionRequest.getQuestionText());
+        question.setGameId(createQuestionRequest.getGameId());
+        question.setOption1(createQuestionRequest.getOption1());
+        question.setOption2(createQuestionRequest.getOption2());
+        question.setOption3(createQuestionRequest.getOption3());
+        question.setOption4(createQuestionRequest.getOption4());
+        question.setCorrectAnswer(createQuestionRequest.getCorrectAnswer());
+
+        // send question to all game players
+        RealTimeData realTimeData = realTimeDataRepository
+                .findByGameId(Long.valueOf(createQuestionRequest.getGameId()));
+
+        String message = "Hello there. Your friend has completed an " +
+                "EcoTask Challenge. Don't to be a part today!";
+        for (Long userId : realTimeData.getPlayerIds()) {
+            twilioConfigService.sendMessage("+234" + userId, message);
         }
-        score = scoreService.saveScore(score);
-        updateRealTimeData(question.getGame(), user, score.getScore());
+
+        return questionRepository.save(question);
     }
 
-    public void endGame(Game game) {
+    public String sendAnswer(Long userId, String gameId, int correctAnswer) {
+
+        Question question = questionRepository.findByGameId(gameId);
+
+        if (question.getCorrectAnswer() != correctAnswer) {
+            return "Wrong answer. Thank you for trying";
+        }
+
+        RealTimeData realTimeData = realTimeDataRepository.findByGameId(Long.valueOf(gameId));
+
+        int currentScore = realTimeData.getScores().get(userId);
+        int newScore = currentScore + 1;
+        realTimeData.getScores().put(userId, newScore);
+
+        question.setAnswered(true);
+
+        return "You are correct. Well done!";
+    }
+
+    public void endGame(Long gameId) {
+
+        Game game = gameRepository.findById(gameId).orElse(null);
+        assert game != null;
         game.setEndTime(LocalDateTime.now());
-        gameService.saveGame(game);
+        game.setOngoing(false);
+
+        gameRepository.save(game);
     }
 
-    private void updateRealTimeData(Game game, User user, int score) {
-        RealTimeData realTimeData = realTimeDataService.getRealTimeDataById(game.getId());
-        if (realTimeData == null) {
-            realTimeData = new RealTimeData();
-            realTimeData.setGame(game);
+    public String sendWinnerNotification(String gameId) {
+
+        RealTimeData realTimeData = realTimeDataRepository.findByGameId(Long.valueOf(gameId));
+        Map<Long, Integer> realTimeDataScores = realTimeData.getScores();
+
+        String userWithHighestScore = null;
+        int highestScore = Integer.MIN_VALUE;
+
+        for (Map.Entry<Long, Integer> entry : realTimeDataScores.entrySet()) {
+            Long userId = entry.getKey();
+            int score = entry.getValue();
+
+            if (score > highestScore) {
+                highestScore = score;
+                userWithHighestScore = userRepository.findById(userId).get().getName();;
+            }
         }
-        Map<Long, Integer> scores = realTimeData.getScores();
-        if (scores == null) {
-            scores = new HashMap<>();
+
+        // more modifications
+        String message = "Hello there. Your friend %s has won the tiriva. Congratulations to them. Thanks for playing";
+        for (Long userId : realTimeData.getPlayerIds()) {
+            twilioConfigService.sendMessage("+234" + userId, message);
         }
-        scores.put(user.getId(), score);
-        realTimeData.setScores(scores);
-        realTimeDataService.saveRealTimeData(realTimeData);
+        return "Notification sent";
     }
 
-    private void sendMessage(String to, String message) {
-        Twilio.init(twilioConfig.twilioRestClient().getAccountSid(), twilioAuthToken);
-        Message.creator(new PhoneNumber(to), new PhoneNumber(twilioFromNumber), message).create();
-    }
 }
