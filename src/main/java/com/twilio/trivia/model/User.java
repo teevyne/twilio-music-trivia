@@ -22,6 +22,4 @@ public class User {
     @Column(nullable = false)
     private String phoneNumber;
 
-//    @Column(nullable = false) // should this be here?
-//    private int score;
 }

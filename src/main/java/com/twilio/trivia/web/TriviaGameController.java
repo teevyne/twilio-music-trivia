@@ -2,7 +2,7 @@ package com.twilio.trivia.web;
 
 import com.twilio.trivia.model.CreateQuestionRequest;
 import com.twilio.trivia.model.Game;
-import com.twilio.trivia.model.Question;
+import com.twilio.trivia.model.RealTimeData;
 import com.twilio.trivia.model.User;
 import com.twilio.trivia.service.TriviaGameService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +33,12 @@ public class TriviaGameController {
         return new ResponseEntity<>(game, HttpStatus.OK);
     }
 
+    @GetMapping("/see-game/{gameId}")
+    public ResponseEntity<?> seeGameLiveData(@PathVariable Long gameId) {
+        RealTimeData game = triviaGameService.checkGameData(gameId);
+        return new ResponseEntity<>(game, HttpStatus.OK);
+    }
+
     @PostMapping("/send-question/")
     public ResponseEntity<?> sendQuestion(@RequestBody CreateQuestionRequest createQuestionRequest) {
 
@@ -40,16 +46,16 @@ public class TriviaGameController {
     }
 
     @PostMapping("/submit-answer/{userId}/{gameId}/{correctAnswer}")
-    public ResponseEntity<Void> submitAnswer(@PathVariable Long userId,
+    public ResponseEntity<?> submitAnswer(@PathVariable Long userId,
                                              @PathVariable String gameId,
                                              @PathVariable int correctAnswer) {
 
-        triviaGameService.sendAnswer(userId, gameId, correctAnswer);
-        return new ResponseEntity<>(HttpStatus.OK);
+        return new ResponseEntity<>(triviaGameService.sendAnswer(userId, gameId, correctAnswer), HttpStatus.OK);
     }
 
     @PostMapping("/end-game/{gameId}")
     public ResponseEntity<?> endGame(@PathVariable Long gameId) {
+
         triviaGameService.endGame(gameId);
         return new ResponseEntity<>(HttpStatus.OK);
     }

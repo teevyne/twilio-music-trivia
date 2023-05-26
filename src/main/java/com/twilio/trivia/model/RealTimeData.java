@@ -28,8 +28,6 @@ public class RealTimeData {
     @ElementCollection
     private Map<Long, Integer> scores = new HashMap<>();
 
-    private int gameProgress = 0;
-
     private Long gameId;
 
     private int winnerId = 0;

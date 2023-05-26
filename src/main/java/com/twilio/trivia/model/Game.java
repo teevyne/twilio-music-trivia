@@ -25,6 +25,5 @@ public class Game {
     @Column(nullable = false)
     private LocalDateTime startTime;
 
-    @Column(nullable = false)
     private LocalDateTime endTime;
 }

@@ -21,14 +21,6 @@ public class Question {
     @Column(nullable = false)
     private String questionText;
 
-    private String option1;
-
-    private String option2;
-
-    private String option3;
-
-    private String option4;
-
     private int correctAnswer;
 
     private String gameId;

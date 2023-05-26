@@ -5,6 +5,7 @@ import com.twilio.trivia.repository.GameRepository;
 import com.twilio.trivia.repository.QuestionRepository;
 import com.twilio.trivia.repository.RealTimeDataRepository;
 import com.twilio.trivia.repository.UserRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -12,6 +13,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 @Service
+@Slf4j
 public class TriviaGameService {
 
     @Autowired
@@ -45,11 +47,16 @@ public class TriviaGameService {
         return game;
     }
 
+    public RealTimeData checkGameData(Long gameId) {
+        return realTimeDataRepository.findByGameId(gameId);
+    }
+
     public String addUserToGame(Long userId, Long gameId) {
 
         RealTimeData realTimeData = realTimeDataRepository.findByGameId(gameId);
         realTimeData.getPlayerIds().add(userId);
         realTimeData.getScores().put(userId, 0);
+        realTimeDataRepository.save(realTimeData);
 
         return "User has been successfully added";
     }
@@ -58,22 +65,20 @@ public class TriviaGameService {
 
         Question question = new Question();
         question.setQuestionText(createQuestionRequest.getQuestionText());
-        question.setGameId(createQuestionRequest.getGameId());
-        question.setOption1(createQuestionRequest.getOption1());
-        question.setOption2(createQuestionRequest.getOption2());
-        question.setOption3(createQuestionRequest.getOption3());
-        question.setOption4(createQuestionRequest.getOption4());
         question.setCorrectAnswer(createQuestionRequest.getCorrectAnswer());
+        question.setGameId(createQuestionRequest.getGameId());
 
         // send question to all game players
         RealTimeData realTimeData = realTimeDataRepository
                 .findByGameId(Long.valueOf(createQuestionRequest.getGameId()));
 
-        String message = "Hello there. Your friend has completed an " +
-                "EcoTask Challenge. Don't to be a part today!";
         for (Long userId : realTimeData.getPlayerIds()) {
-            twilioConfigService.sendMessage("+234" + userId, message);
+            String userPhoneNumber = userRepository.findById(userId).get().getPhoneNumber();
+            twilioConfigService.sendMessage("+234" + userPhoneNumber.substring(1),
+                    createQuestionRequest.getQuestionText());
         }
+
+        log.info(String.format("message sent: %s", createQuestionRequest.getQuestionText()));
 
         return questionRepository.save(question);
     }
@@ -91,8 +96,7 @@ public class TriviaGameService {
         int currentScore = realTimeData.getScores().get(userId);
         int newScore = currentScore + 1;
         realTimeData.getScores().put(userId, newScore);
-
-        question.setAnswered(true);
+        realTimeDataRepository.save(realTimeData);
 
         return "You are correct. Well done!";
     }
@@ -106,13 +110,14 @@ public class TriviaGameService {
 
         gameRepository.save(game);
     }
+    String userWithHighestScore = null;
 
     public String sendWinnerNotification(String gameId) {
+        Long winnerId = null;
 
         RealTimeData realTimeData = realTimeDataRepository.findByGameId(Long.valueOf(gameId));
         Map<Long, Integer> realTimeDataScores = realTimeData.getScores();
 
-        String userWithHighestScore = null;
         int highestScore = Integer.MIN_VALUE;
 
         for (Map.Entry<Long, Integer> entry : realTimeDataScores.entrySet()) {
@@ -121,15 +126,21 @@ public class TriviaGameService {
 
             if (score > highestScore) {
                 highestScore = score;
-                userWithHighestScore = userRepository.findById(userId).get().getName();;
+                userWithHighestScore = userRepository.findById(userId).get().getName();
+                winnerId = userId;
             }
         }
 
         // more modifications
-        String message = "Hello there. Your friend %s has won the tiriva. Congratulations to them. Thanks for playing";
+        String message = String.format("Hello there. Player with ID %s has won the trivia. Congratulations to " +
+                "them. Thanks for playing", winnerId);
+
         for (Long userId : realTimeData.getPlayerIds()) {
-            twilioConfigService.sendMessage("+234" + userId, message);
+            String userPhoneNumber = userRepository.findById(userId).get().getPhoneNumber();
+            twilioConfigService.sendMessage("+234" + userPhoneNumber.substring(1), message);
         }
+        log.info(message);
+
         return "Notification sent";
     }
 

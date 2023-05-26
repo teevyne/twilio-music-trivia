@@ -22,8 +22,7 @@ public class TwilioConfigService {
 
     public void sendMessage(String toNumber, String messageBody) {
         Twilio.init(accountSid, authToken);
-        Message message = Message.creator(new PhoneNumber(toNumber),
+        Message.creator(new PhoneNumber(toNumber),
                 new PhoneNumber(fromNumber), messageBody).create();
-        log.info("Message SID: " + message.getSid());
     }
 }
